@@ -1,0 +1,7 @@
+{
+    "functions_to_profile": [
+        "fast_function",
+        "medium_function",
+        "slow_function"
+    ]
+} 

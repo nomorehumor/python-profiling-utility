@@ -1,40 +1,50 @@
+import sys
 import time
-from contextlib import contextmanager
+import json
+from tabulate import tabulate
 
-class Profiler:
-    def __init__(self):
-        self.enabled = False
+class SysProfiler:
+    def __init__(self, config_file):
         self.results = {}
         self.functions_to_trace = set()
+        self.load_config(config_file)
+        self.current_function = None
+        self.start_time = None
 
-    def enable(self, functions=None):
-        self.enabled = True
-        if functions:
-            self.functions_to_trace.update(functions)
+    def load_config(self, config_file):
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        self.functions_to_trace = set(config["functions_to_profile"])
+
+    def profile_function(self, frame, event, arg):
+        if event == 'call':
+            func_name = frame.f_code.co_name
+            if func_name in self.functions_to_trace:
+                self.current_function = func_name
+                self.start_time = time.time()
+        elif event == 'return' and self.current_function:
+            elapsed_time = time.time() - self.start_time
+            if self.current_function not in self.results:
+                self.results[self.current_function] = []
+            self.results[self.current_function].append(elapsed_time)
+            self.current_function = None
+
+    def enable(self):
+        sys.setprofile(self.profile_function)
 
     def disable(self):
-        self.enabled = False
+        sys.setprofile(None)
 
-    def get_results(self):
-        return self.results
-
-    @contextmanager
-    def profile(self, func_name):
-        if self.enabled and func_name in self.functions_to_trace:
-            start_time = time.time()
-            yield
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            if func_name not in self.results:
-                self.results[func_name] = []
-            self.results[func_name].append(elapsed_time)
-        else:
-            yield
+    def disable_function(self, func_name):
+        """Dynamically disable profiling for a specific function."""
+        if func_name in self.functions_to_trace:
+            self.functions_to_trace.remove(func_name)
 
     def print_results(self):
         print("Profiling Results:")
+        table = []
         for func_name, times in self.results.items():
-            print(f"{func_name}: {sum(times)/len(times):.6f} seconds (average over {len(times)} runs)")
-
-# Create a global profiler instance
-profiler = Profiler() 
+            average_time = sum(times) / len(times)
+            table.append([func_name, f"{average_time:.6f}", len(times)])
+        headers = ["Function Name", "Average Time (s)", "Number of Runs"]
+        print(tabulate(table, headers=headers, tablefmt="grid"))
